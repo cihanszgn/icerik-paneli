@@ -1,0 +1,152 @@
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+generator client {
+    provider = "prisma-client-js"
+    binaryTargets = ["native", "linux-musl-arm64-openssl-3.0.x"]
+    output = "/home/ubuntu/icerik_paneli/nextjs_space/node_modules/.prisma/client"
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String
+  name          String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  accounts      Account[]
+  sessions      Session[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+  @@unique([identifier, token])
+}
+
+model Source {
+  id             String   @id @default(cuid())
+  name           String
+  type           String   // kick, youtube, website
+  url            String
+  categories     String[] // array of category strings
+  isActive       Boolean  @default(true)
+  config         Json     @default("{}")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  clips          Clip[]
+  scanLogs       ScanLog[]
+}
+
+model Clip {
+  id              String       @id @default(cuid())
+  sourceId        String
+  source          Source       @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  title           String
+  description     String?
+  platformLink    String
+  timestampStart  Int?         // seconds
+  timestampEnd    Int?         // seconds
+  engagementScore Float        @default(0)
+  category        String?
+  status          String       @default("new") // new, reviewed, archived
+  notes           String?
+  thumbnailUrl    String?
+  mediaUrl        String?      // doğrudan oynatılabilir video (HLS .m3u8 / mp4) — gömülü oynatıcı için
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  socialPosts     SocialPost[]
+  @@index([sourceId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model SocialPost {
+  id          String   @id @default(cuid())
+  clipId      String
+  clip        Clip     @relation(fields: [clipId], references: [id], onDelete: Cascade)
+  format      String   // reels, shorts, post, tweet
+  title       String
+  description String?
+  hashtags    String[]
+  imageUrl    String?  // içerikle alakalı üretilmiş/seçilmiş görsel (paylaşım için)
+  status      String   @default("draft") // draft, ready, published
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@index([clipId])
+  @@index([status])
+}
+
+// AI önbelleği: daha önce işlenmiş (ve token harcanmış) istekleri saklar.
+// Aynı istek tekrar gelirse yanıt buradan döner — HİÇ token harcanmaz.
+model AiCache {
+  id        String   @id @default(cuid())
+  key       String   @unique // level + prompt hash
+  level     String
+  prompt    String
+  response  String
+  source    String   @default("unknown") // yanıtı ilk üreten model tipi
+  hits      Int      @default(0)          // önbellekten kaç kez okundu (token tasarrufu)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([createdAt])
+}
+
+model AiConfig {
+  id         String   @id @default(cuid())
+  modelName  String
+  endpoint   String
+  apiKeyEnv  String?  // env var name
+  type       String   // cloud, local, premium
+  isActive   Boolean  @default(true)
+  config     Json     @default("{}")
+  usageCount Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model ScanLog {
+  id          String   @id @default(cuid())
+  sourceId    String?
+  source      Source?  @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  scanType    String   // kick, youtube, website, manual
+  status      String   // running, completed, failed
+  itemsFound  Int      @default(0)
+  message     String?
+  startedAt   DateTime @default(now())
+  completedAt DateTime?
+}
+
+model Setting {
+  id    String @id @default(cuid())
+  key   String @unique
+  value Json
+}
